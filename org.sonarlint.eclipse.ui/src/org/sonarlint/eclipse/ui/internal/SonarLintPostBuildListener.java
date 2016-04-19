@@ -133,7 +133,6 @@ public class SonarLintPostBuildListener implements IResourceChangeListener {
     ISonarLintFile sonarLintFile = Adapters.adapt(delta.getResource(), ISonarLintFile.class);
     if (sonarLintFile != null && isChanged(delta)) {
       changedFiles.add(sonarLintFile);
-      return true;
     }
 
     return true;

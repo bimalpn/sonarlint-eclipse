@@ -25,6 +25,7 @@ public enum TriggerType {
   MANUAL("Manual trigger", ServerIssueUpdateStrategy.PER_PROJECT_OR_PER_FILE_SYNC),
   MANUAL_CHANGESET("Manual trigger changeset", ServerIssueUpdateStrategy.PER_PROJECT_OR_PER_FILE_SYNC),
   EDITOR_CHANGE("Editor change", ServerIssueUpdateStrategy.NO_UPDATE),
+  COMPILATION("Compilation", ServerIssueUpdateStrategy.NO_UPDATE),
   BINDING_CHANGE("Binding change", ServerIssueUpdateStrategy.PER_FILE_ASYNC),
   STANDALONE_CONFIG_CHANGE("Standalone config change", ServerIssueUpdateStrategy.NO_UPDATE);
 

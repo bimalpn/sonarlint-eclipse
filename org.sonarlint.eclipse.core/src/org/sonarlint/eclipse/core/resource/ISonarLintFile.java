@@ -43,7 +43,7 @@ public interface ISonarLintFile extends ISonarLintIssuable {
   String getProjectRelativePath();
 
   /**
-   * Some analyzers need to read the file from disk so {@link #getDocument()} will not be used, and instead
+   * Some analyzers need to read the file from disk so {@link #getContents()} will not be used, and instead
    * {@link EFS} will be queried for a physical copy of the file, and content will be read using this charset.
    */
   Charset getCharset();

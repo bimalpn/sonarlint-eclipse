@@ -74,7 +74,7 @@ public class JavaProjectConfiguratorExtension implements IAnalysisConfigurator, 
     if (jdtPresent) {
       return JdtUtils.shouldExclude(file);
     }
-    return false;
+    return ISonarLintFileAdapterParticipant.super.exclude(file);
   }
 
   @Override
