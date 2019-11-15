@@ -199,6 +199,10 @@ public final class MarkerUtils {
       result = prime * result + (int) (markerId ^ (markerId >>> 32));
       return result;
     }
-  }
 
+    @Override
+    public String toString() {
+      return super.toString() + "; message='" + message + "', previous={ " + previous + " }";
+    }
+  }
 }

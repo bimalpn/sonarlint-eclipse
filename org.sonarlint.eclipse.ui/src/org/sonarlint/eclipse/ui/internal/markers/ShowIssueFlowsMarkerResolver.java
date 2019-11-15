@@ -19,12 +19,12 @@
  */
 package org.sonarlint.eclipse.ui.internal.markers;
 
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+import java.util.stream.StreamSupport;
 
 import org.eclipse.core.resources.IMarker;
 import org.eclipse.jface.text.BadPositionCategoryException;
@@ -134,15 +134,23 @@ public class ShowIssueFlowsMarkerResolver implements IMarkerResolution2 {
       SonarLintLogger.get().debug("No extra positions found, should maybe trigger a new analysis");
       return Collections.emptyMap();
     }
+    System.out.println(">>> Looking for flow: " + selectedFlow);
     List<ExtraPosition> positionsForMarker = Stream.of(positions)
       .map(p -> (ExtraPosition) p)
       .filter(p -> p.getMarkerId() == marker.getId() && !p.isDeleted)
       .collect(Collectors.toList());
+    System.out.println(">>> All positions for marker "+ marker.getId() +": [\n" + positionsForMarker.stream().map(ExtraPosition::toString).collect(Collectors.joining(",\n"))
+      + "]");
     ExtraPosition selectedFlowRoot = positionsForMarker.stream()
       .filter(p -> (p.getParent() == null))
+      .map(p -> {
+        System.out.println(">>> Root: " + p);
+        return p;
+      })
       .skip((long) selectedFlow - 1)
       .findFirst()
       .orElse(null);
+    System.out.println(">>> Found flow root: " + selectedFlowRoot);
     return positionsForMarker.stream()
       .filter(p -> selectedFlowRoot == null || p.isDescendantOf(selectedFlowRoot))
       .collect(Collectors.toMap(p -> new Annotation(ISSUE_FLOW_ANNOTATION_TYPE, false, p.getMessage()),
@@ -182,13 +190,9 @@ public class ShowIssueFlowsMarkerResolver implements IMarkerResolution2 {
   }
 
   private static List<Annotation> existingFlowAnnotations(IAnnotationModel annotationModel) {
-    List<Annotation> result = new ArrayList<>();
-    annotationModel.getAnnotationIterator().forEachRemaining(a -> {
-      if (ISSUE_FLOW_ANNOTATION_TYPE.equals(a.getType())) {
-        result.add((Annotation) a);
-      }
-    });
-    return result;
+    return StreamSupport.stream(((Iterable<Annotation>) annotationModel::getAnnotationIterator).spliterator(), false)
+      .filter(a -> ISSUE_FLOW_ANNOTATION_TYPE.equals(a.getType()))
+      .collect(Collectors.toList());
   }
 
   @Override

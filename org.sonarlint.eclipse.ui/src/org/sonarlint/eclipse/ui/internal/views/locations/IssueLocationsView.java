@@ -25,6 +25,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
+import java.util.stream.Stream;
 
 import javax.annotation.Nullable;
 import org.eclipse.core.resources.IMarker;
@@ -34,6 +35,7 @@ import org.eclipse.jface.action.Separator;
 import org.eclipse.jface.text.BadLocationException;
 import org.eclipse.jface.text.BadPositionCategoryException;
 import org.eclipse.jface.text.IDocument;
+import org.eclipse.jface.text.Position;
 import org.eclipse.jface.viewers.ISelection;
 import org.eclipse.jface.viewers.IStructuredSelection;
 import org.eclipse.jface.viewers.ITreeContentProvider;
@@ -89,26 +91,22 @@ public class IssueLocationsView extends ViewPart implements ISelectionListener, 
 
     private final int parentId;
     private final String label;
-    private final IssueLocation position;
+    private final IssueLocation location;
 
     public FlowNode(int parentId, IssueLocation location) {
       this.parentId = parentId;
       this.label = positionLabel(location.getMessage());
-      this.position = location;
+      this.location = location;
     }
 
     public FlowNode(int id, int parentId, IssueLocation position) {
       this.parentId = parentId;
       this.label = id + ": " + positionLabel(position.getMessage());
-      this.position = position;
+      this.location = position;
     }
 
     public String getLabel() {
       return label;
-    }
-
-    public IssueLocation getPosition() {
-      return position;
     }
 
     private static String positionLabel(@Nullable String message) {
@@ -250,12 +248,14 @@ public class IssueLocationsView extends ViewPart implements ISelectionListener, 
 
   public void setInput(@Nullable IMarker sonarlintMarker) {
     locationsViewer.setInput(sonarlintMarker);
-    if (sonarlintMarker != null && showAnnotationsAction.isChecked()) {
+    if (sonarlintMarker != null) {
       ITextEditor editorFound = LocationsUtils.findOpenEditorFor(sonarlintMarker);
       if (editorFound != null) {
         selectedNode = null;
         selectedFlow = null;
-        ShowIssueFlowsMarkerResolver.showAnnotations(sonarlintMarker, editorFound, getSelectedFlow());
+        createLocationsIfNeeded(sonarlintMarker, editorFound.getDocumentProvider().getDocument(editorFound.getEditorInput()));
+        ShowIssueFlowsMarkerResolver.removeAllAnnotations();
+        showAnnotationsAction.run();
       }
     }
   }
@@ -317,12 +317,13 @@ public class IssueLocationsView extends ViewPart implements ISelectionListener, 
 
   private void onTreeNodeSelected(Object node) {
     selectedNode = node;
-    if (node instanceof FlowNode) {
-      IMarker sonarlintMarker = (IMarker) locationsViewer.getInput();
-      ITextEditor openEditor = LocationsUtils.findOpenEditorFor(sonarlintMarker);
-      if (openEditor != null) {
-        IDocument document = openEditor.getDocumentProvider().getDocument(openEditor.getEditorInput());
-        ExtraPosition pos = locationToPosition((FlowNode) node, sonarlintMarker, document);
+    IMarker sonarlintMarker = (IMarker) locationsViewer.getInput();
+    ITextEditor openEditor = LocationsUtils.findOpenEditorFor(sonarlintMarker);
+    if (openEditor != null) {
+      IDocument document = openEditor.getDocumentProvider().getDocument(openEditor.getEditorInput());
+      createLocationsIfNeeded(sonarlintMarker, document);
+      if (node instanceof FlowNode) {
+        ExtraPosition pos = locationToPosition(((FlowNode) node).location, sonarlintMarker, document, null);
         if (pos != null) {
           openEditor.setHighlightRange(pos.offset, pos.length, true);
         }
@@ -335,53 +336,53 @@ public class IssueLocationsView extends ViewPart implements ISelectionListener, 
     IWorkbenchPage page = PlatformUI.getWorkbench().getActiveWorkbenchWindow().getActivePage();
     IMarker sonarlintMarker = (IMarker) locationsViewer.getInput();
     try {
-      if (node instanceof RootNode) {
-        IDE.openEditor(page, sonarlintMarker);
-      } else if (node instanceof FlowRootNode) {
-        IDE.openEditor(page, sonarlintMarker);
-      } else if (node instanceof FlowNode) {
-        IEditorPart editor = IDE.openEditor(page, sonarlintMarker);
-        if (editor instanceof ITextEditor) {
-          IDocument document = ((ITextEditor) editor).getDocumentProvider().getDocument(editor.getEditorInput());
-          createExtraLocations(document, sonarlintMarker);
-          ExtraPosition pos = locationToPosition((FlowNode) node, sonarlintMarker, document);
+      IEditorPart editor = IDE.openEditor(page, sonarlintMarker);
+      onTreeNodeSelected(node);
+      if (editor instanceof ITextEditor) {
+        IDocument document = ((ITextEditor) editor).getDocumentProvider().getDocument(editor.getEditorInput());
+        if (node instanceof FlowNode) {
+          ExtraPosition pos = locationToPosition(((FlowNode) node).location, sonarlintMarker, document, null);
           if (pos != null) {
             ((ITextEditor) editor).selectAndReveal(pos.offset, pos.length);
           }
         }
       }
-    } catch (
-
-    PartInitException e) {
+    } catch (PartInitException e) {
       SonarLintLogger.get().error("Unable to open editor", e);
     }
   }
 
-  private static ExtraPosition locationToPosition(FlowNode node, IMarker sonarlintMarker, IDocument document) {
-    IssueLocation l = node.getPosition();
-    return MarkerUtils.getExtraPosition(document,
-      TextRange.get(l.getStartLine(), l.getStartLineOffset(), l.getEndLine(), l.getEndLineOffset()),
-      l.getMessage(),
-      sonarlintMarker.getId(), null);
+  private static void createLocationsIfNeeded(IMarker sonarlintMarker, IDocument document) {
+    try {
+      Position[] currentPositions = document.getPositions(MarkerUtils.SONARLINT_EXTRA_POSITIONS_CATEGORY);
+      if (currentPositions == null || Stream.of(currentPositions).noneMatch(p -> p instanceof ExtraPosition && ((ExtraPosition) p).getMarkerId() == sonarlintMarker.getId())) {
+        createExtraLocations(document, sonarlintMarker);
+      }
+    } catch (BadPositionCategoryException e) {
+      SonarLintLogger.get().error("Unable to get extra positions", e);
+    }
   }
 
   private static void createExtraLocations(IDocument document, IMarker marker) {
-    String encodedFlows = marker.getAttribute(MarkerUtils.SONAR_MARKER_EXTRA_LOCATIONS_ATTR, "");
-    for (Flow f : FlowCodec.decode(encodedFlows)) {
+    for (Flow flow : FlowCodec.decode(marker.getAttribute(MarkerUtils.SONAR_MARKER_EXTRA_LOCATIONS_ATTR, ""))) {
       ExtraPosition parent = null;
-      List<IssueLocation> locations = new ArrayList<>(f.locations());
+      List<IssueLocation> locations = new ArrayList<>(flow.locations());
       Collections.reverse(locations);
       for (IssueLocation l : locations) {
-        ExtraPosition extraPosition = MarkerUtils.getExtraPosition(document,
-          TextRange.get(l.getStartLine(), l.getStartLineOffset(), l.getEndLine(), l.getEndLineOffset()),
-          l.getMessage(),
-          marker.getId(), parent);
+        ExtraPosition extraPosition = locationToPosition(l, marker, document, parent);
         if (extraPosition != null) {
           savePosition(document, extraPosition);
           parent = extraPosition;
         }
       }
     }
+  }
+
+  private static ExtraPosition locationToPosition(IssueLocation l, IMarker sonarlintMarker, IDocument document, @Nullable ExtraPosition parent) {
+    return MarkerUtils.getExtraPosition(document,
+      TextRange.get(l.getStartLine(), l.getStartLineOffset(), l.getEndLine(), l.getEndLineOffset()),
+      l.getMessage(),
+      sonarlintMarker.getId(), parent);
   }
 
   private static void savePosition(IDocument document, ExtraPosition extraPosition) {
@@ -459,11 +460,11 @@ public class IssueLocationsView extends ViewPart implements ISelectionListener, 
       if (editorFound != null) {
         Integer newSelectedFlow = getSelectedFlow();
         // Clean annotations only when a different flow is selected to avoid flickering
-        if (!newSelectedFlow.equals(selectedFlow)) {
+        if (!Objects.equals(newSelectedFlow, selectedFlow)) {
           ShowIssueFlowsMarkerResolver.removeAllAnnotations();
           selectedFlow = newSelectedFlow;
         }
-        ShowIssueFlowsMarkerResolver.showAnnotations(sonarlintMarker, editorFound, selectedFlow);
+        ShowIssueFlowsMarkerResolver.showAnnotations(sonarlintMarker, editorFound, newSelectedFlow);
       }
     }
   }

@@ -27,7 +27,6 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import java.util.stream.Collectors;
 
 import javax.annotation.Nullable;
 
@@ -75,12 +74,6 @@ public class SonarLintMarkerUpdater {
     } catch (CoreException e) {
       SonarLintLogger.get().error(e.getMessage(), e);
     }
-  }
-
-  public static Set<IResource> getResourcesWithMarkers(ISonarLintProject project) throws CoreException {
-    return Arrays.stream(project.getResource().findMarkers(SonarLintCorePlugin.MARKER_ON_THE_FLY_ID, false, IResource.DEPTH_INFINITE))
-      .map(IMarker::getResource)
-      .collect(Collectors.toSet());
   }
 
   private static void resetExtraPositions(IDocument document) {
